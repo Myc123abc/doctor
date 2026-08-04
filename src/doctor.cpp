@@ -1,15 +1,12 @@
 #include "doctor.hpp"
 #include "fps_limiter.hpp"
-
-#define _WIN32_DCOM
-#include <wbemidl.h>
-#pragma comment(lib, "wbemuuid.lib")
+#include "WMI.hpp"
+#include "common.hpp"
 
 #include <thread>
-#include <print>
-#include <string_view>
 #include <atomic>
-#include <vector>
+
+using namespace doctor;
 
 namespace {
 
@@ -18,15 +15,15 @@ struct Context
   std::jthread     thread;
   std::atomic_bool exit{};
 
-  IWbemRefresher*  refresher{};
-  IWbemHiPerfEnum* enumerate{};
+  // IWbemRefresher*  refresher{};
+  // IWbemHiPerfEnum* enumerate{};
 
-  std::vector<IWbemObjectAccess*> objects{};
+  // std::vector<IWbemObjectAccess*> objects{};
 
-  long virtual_bytes_handle{};
-  long id_process_handle{};
-  wchar_t const* virtual_bytes_property{};
-  wchar_t const* id_process_property{};
+  // long virtual_bytes_handle{};
+  // long id_process_handle{};
+  // wchar_t const* virtual_bytes_property{};
+  // wchar_t const* id_process_property{};
 
   // CPU usage
   struct CPUTime
@@ -39,107 +36,36 @@ struct Context
   uint32_t  frame_cnt{};
   float     cpu_usage{};
 
+  void get_cpu_information() noexcept;
+
   void update() noexcept;
   void update_cpu_usage() noexcept;
 } g_ctx;
 
-void check(BOOL b, std::string_view msg) noexcept
-{
-  if (!b)
-  {
-    std::println("{} Error code = 0x{:08x}", msg, GetLastError());
-    exit(EXIT_FAILURE);
-  }
-}
+WMI g_wmi;
 
-template <typename... T>
-void check(BOOL b, std::format_string<T...> const fmt, T&&... args) noexcept
-{
-  if (!b)
-  {
-    std::println("{} Error code = 0x{:08x}", std::format(fmt, std::forward<T>(args)...), GetLastError());
-    exit(EXIT_FAILURE);
-  }
-}
+  // // Create refresher.
+  // check(CoCreateInstance(CLSID_WbemRefresher, NULL, CLSCTX_INPROC_SERVER, IID_IWbemRefresher, reinterpret_cast<LPVOID*>(&g_ctx.refresher)),
+  //   "Failed to create refresher.");
 
-void check(HRESULT hr, std::string_view msg) noexcept
-{
-  if (FAILED(hr))
-  {
-    std::println("{} Error code = 0x{:08X}", msg, static_cast<unsigned long>(hr));
-    exit(EXIT_FAILURE);
-  }
-}
-
-template <typename... T>
-void check(HRESULT hr, std::format_string<T...> const fmt, T&&... args) noexcept
-{
-  if (FAILED(hr))
-  {
-    std::println("{} Error code = 0x{:08X}", std::format(fmt, std::forward<T>(args)...), static_cast<unsigned long>(hr));
-    exit(EXIT_FAILURE);
-  }
-}
-
-void init() noexcept
-{
-  // Initialize COM.
-  check(CoInitializeEx(0, COINIT_APARTMENTTHREADED), "Failed to initialize COM library.");
-
-  // Set COM security levels.
-  check(CoInitializeSecurity(NULL, -1, NULL, NULL,
-    RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_IMP_LEVEL_IMPERSONATE, NULL, EOAC_NONE, NULL),
-    "Failed to initialize security.");
-
-  // Create a connection to a WMI namespace.
-
-  // Initialize IWbemLocator.
-  IWbemLocator* loc{};
-  check(CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER, IID_IWbemLocator, reinterpret_cast<LPVOID*>(&loc)),
-    "Failed to create IWbemLocator object.");
-
-  // Connect to WMI.
-  auto str = SysAllocString(L"\\\\.\\root\\cimv2");
-  IWbemServices* svc{};
-  check(loc->ConnectServer(str, NULL, NULL, 0, NULL, 0, 0, &svc),
-    "Could not connect.");
-  SysFreeString(str);
-  loc->Release();
-
-  // Set the proxy so that impersonation of the client occurs.
-  check(CoSetProxyBlanket(svc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, NULL, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, NULL, EOAC_NONE),
-    "Could not set proxy blanket.");
-
-  // Create refresher.
-  check(CoCreateInstance(CLSID_WbemRefresher, NULL, CLSCTX_INPROC_SERVER, IID_IWbemRefresher, reinterpret_cast<LPVOID*>(&g_ctx.refresher)),
-    "Failed to create refresher.");
-
-  // Add an enumerator to the refresher.
-  IWbemConfigureRefresher* cfg{};
-  check(g_ctx.refresher->QueryInterface(IID_IWbemConfigureRefresher, reinterpret_cast<LPVOID*>(&cfg)),
-    "Failed to get configure refresher object.");
-  long id{};
-  constexpr auto invalid_class_hr = static_cast<HRESULT>(0x80041010L);
-  auto hr = cfg->AddEnum(svc, L"Win32_PerfRawData_PerfProc_Process", 0, NULL, &g_ctx.enumerate, &id);
-  g_ctx.virtual_bytes_property = L"VirtualBytes";
-  g_ctx.id_process_property = L"IDProcess";
-  if (FAILED(hr) && hr == invalid_class_hr)
-  {
-    std::println("The performance counter class is unavailable on this machine. Falling back to Win32_Process.");
-    hr = cfg->AddEnum(svc, L"Win32_Process", 0, NULL, &g_ctx.enumerate, &id);
-    g_ctx.virtual_bytes_property = L"VirtualSize";
-    g_ctx.id_process_property = L"ProcessId";
-  }
-  check(hr, "Failed to add an enumerator to the refresher.");
-  cfg->Release();
-  svc->Release();
-}
-
-void destroy() noexcept
-{
-  g_ctx.refresher->Release();
-  CoUninitialize();
-}
+  // // Add an enumerator to the refresher.
+  // IWbemConfigureRefresher* cfg{};
+  // check(g_ctx.refresher->QueryInterface(IID_IWbemConfigureRefresher, reinterpret_cast<LPVOID*>(&cfg)),
+  //   "Failed to get configure refresher object.");
+  // long id{};
+  // constexpr auto invalid_class_hr = static_cast<HRESULT>(0x80041010L);
+  // auto hr = cfg->AddEnum(svc, L"Win32_PerfRawData_PerfProc_Process", 0, NULL, &g_ctx.enumerate, &id);
+  // g_ctx.virtual_bytes_property = L"VirtualBytes";
+  // g_ctx.id_process_property = L"IDProcess";
+  // if (FAILED(hr) && hr == invalid_class_hr)
+  // {
+  //   std::println("The performance counter class is unavailable on this machine. Falling back to Win32_Process.");
+  //   hr = cfg->AddEnum(svc, L"Win32_Process", 0, NULL, &g_ctx.enumerate, &id);
+  //   g_ctx.virtual_bytes_property = L"VirtualSize";
+  //   g_ctx.id_process_property = L"ProcessId";
+  // }
+  // check(hr, "Failed to add an enumerator to the refresher.");
+  // cfg->Release();
 
 void Context::update() noexcept
 {
@@ -208,6 +134,14 @@ void Context::update_cpu_usage() noexcept
   }
 }
 
+void Context::get_cpu_information() noexcept
+{
+  for (auto const& info : g_wmi.get_cpu_infos())
+  {
+    std::println("CPU : {}\nCores : {}", info.name, info.core_num);
+  }
+}
+
 }
 
 namespace doctor {
@@ -216,7 +150,8 @@ void run_system_diagnostics_thead() noexcept
 {
   g_ctx.thread = std::jthread([]
   {
-    init();
+    g_wmi.init();
+    g_ctx.get_cpu_information();
 
     auto limiter = FpsLimiter{};
     limiter.init(1);
@@ -227,14 +162,13 @@ void run_system_diagnostics_thead() noexcept
       g_ctx.update();
       limiter.update();
     }
-
-    destroy();
   });
 }
 
 void exit_system_diagnostics_thread() noexcept
 {
   g_ctx.exit.store(true, std::memory_order_relaxed);
+  g_wmi.destroy();
   g_ctx.thread.join();
 }
 
