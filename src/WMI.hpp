@@ -1,18 +1,13 @@
 #pragma once
 
+#include "doctor.hpp"
+
 #define _WIN32_DCOM
 #include <wbemidl.h>
 
-#include <string>
 #include <vector>
 
 namespace doctor {
-
-struct CPUInfo
-{
-  std::string name;
-  uint32_t    core_num{};
-};
 
 class WMI
 {

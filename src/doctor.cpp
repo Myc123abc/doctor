@@ -35,7 +35,7 @@ void run_system_diagnostics_thead() noexcept
   g_ctx.thread = std::jthread([]
   {
     g_wmi.init();
-    g_ctx.get_cpu_information();
+    g_ctx.init();
 
     auto limiter = FpsLimiter{};
     limiter.init(1);
@@ -59,6 +59,13 @@ void exit_system_diagnostics_thread() noexcept
 auto get_cpu_usage() noexcept -> float
 {
   return g_ctx.cpu_usage;
+}
+
+auto get_cpu_infos() noexcept -> std::span<CPUInfo>
+{
+  if (g_ctx.cpu_infos_get_complete.try_wait())
+    return g_ctx.cpu_infos;
+  return {};
 }
 
 }

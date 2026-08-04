@@ -4,6 +4,12 @@
 
 namespace doctor {
 
+void Context::init() noexcept
+{
+  cpu_infos = g_wmi.get_cpu_infos();
+  cpu_infos_get_complete.count_down();
+}
+
 void Context::update() noexcept
 {
   update_cpu_usage();
@@ -68,14 +74,6 @@ void Context::update_cpu_usage() noexcept
     auto total  = kernel + user;
 
     cpu_usage = static_cast<float>(total - idle) / total * 100;
-  }
-}
-
-void Context::get_cpu_information() noexcept
-{
-  for (auto const& info : g_wmi.get_cpu_infos())
-  {
-    std::println("CPU : {}\nCores : {}", info.name, info.core_num);
   }
 }
 

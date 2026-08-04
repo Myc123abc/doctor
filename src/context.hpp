@@ -1,5 +1,7 @@
 #pragma once
 
+#include "WMI.hpp"
+
 #include <windows.h>
 
 #include <thread>
@@ -16,6 +18,8 @@ struct Context
     return ctx;
   }
 
+  void init() noexcept;
+
   std::jthread     thread;
   std::atomic_bool exit{};
 
@@ -29,7 +33,9 @@ struct Context
   // wchar_t const* virtual_bytes_property{};
   // wchar_t const* id_process_property{};
 
+  //
   // CPU usage
+  //
   struct CPUTime
   {
     FILETIME idle{};
@@ -40,8 +46,11 @@ struct Context
   uint32_t   frame_cnt{};
   float      cpu_usage{};
 
-  void get_cpu_information() noexcept;
-  std::latch cpu_infos_get_complete{ false };
+  //
+  // CPU information
+  //
+  std::latch           cpu_infos_get_complete{ 1 };
+  std::vector<CPUInfo> cpu_infos;
 
   void update() noexcept;
   void update_cpu_usage() noexcept;

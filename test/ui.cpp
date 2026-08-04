@@ -33,5 +33,12 @@ void ui() noexcept
     }
   }
 
+  // CPU information
+  if (auto infos = get_cpu_infos(); !infos.empty())
+  {
+    for (auto const& info : infos)
+      ImGui::Text("CPU : %s\nCores : %d", info.name.c_str(), info.core_num);
+  }
+
   ImGui::End();
 }
