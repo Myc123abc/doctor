@@ -24,6 +24,12 @@ public:
   WMI& operator=(WMI const&) = delete;
   WMI& operator=(WMI&&)      = delete;
 
+  static auto instance() noexcept -> WMI&
+  {
+    static WMI wmi;
+    return wmi;
+  }
+
   void init() noexcept;
   void destroy() noexcept;
 
@@ -64,5 +70,7 @@ private:
 private:
   IWbemServices* _service{};
 };
+
+inline static auto& g_wmi = WMI::instance();
 
 }
